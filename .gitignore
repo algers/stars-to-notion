@@ -122,4 +122,3 @@ dist
 # VSCode Extension saved history
 .history/
 .prettierrc
-package-lock.json
