@@ -101,7 +101,7 @@ async function getStarsFromNotionDatabase() {
         }
         cursor = next_cursor
     }
-    console.log(`${pages.length} stars successfully fetched.`)
+    console.log(`${pages.length} stars successfully fetched from Notion.`)
     return pages.map(page => {
         return {
             pageId: page.id,
