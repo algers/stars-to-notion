@@ -1,27 +1,33 @@
 /* ================================================================================
 
-  notion-github-sync.
+  stars-to-notion
+  Save stars in a Notion database automatically with GitHub Actions
+  GitHub: https://github.com/algers/stars-to-notion
   
-  Glitch example: https://glitch.com/edit/#!/notion-github-sync
-  Find the official Notion API client @ https://github.com/makenotion/notion-sdk-js/
 
 ================================================================================ */
 
-const { Client, LogLevel, APIErrorCode, APIResponseError } = require("@notionhq/client")
+const { Client, LogLevel } = require("@notionhq/client")
 const dotenv = require("dotenv")
 const { Octokit } = require("octokit")
 const _ = require("lodash")
 
 dotenv.config()
-const octokit = new Octokit({ auth: process.env.GITHUB_KEY, request: {} })
-const notion = new Client({ auth: process.env.NOTION_KEY, logLevel: LogLevel.DEBUG })
+const octokit = new Octokit({
+    auth: process.env.GH_USER_TOKEN,
+    request: {},
+})
+const notion = new Client({
+    auth: process.env.NOTION_KEY,
+    logLevel: LogLevel.DEBUG,
+})
 
 const databaseId = process.env.NOTION_DATABASE_ID
 const OPERATION_BATCH_SIZE = 1
 
 /**
- * Local map to store  GitHub issue ID to its Notion pageId.
- * { [issueId: string]: string }
+ * Local map to store  GitHub star ID to its Notion pageId.
+ * { [starId: string]: string }
  */
 const gitHubStarsIdToNotionPageId = {}
 
@@ -32,7 +38,7 @@ const gitHubStarsIdToNotionPageId = {}
 setInitialGitHubToNotionIdMap().then(syncNotionDatabaseWithGitHub)
 
 /**
- * Get and set the initial data store with issues currently in the database.
+ * Get and set the initial data store with stars currently in the database.
  */
 async function setInitialGitHubToNotionIdMap() {
     const currentStars = await getStarsFromNotionDatabase()
@@ -44,8 +50,8 @@ async function setInitialGitHubToNotionIdMap() {
 }
 
 async function syncNotionDatabaseWithGitHub() {
-    // Get all issues currently in the provided GitHub repository.
-    console.log("\nFetching issues from Notion DB...")
+    // Get all user's currently starred repositories
+    console.log("\nFetching stars from Notion DB...")
     const stars = await getGitHubStarsForUser()
     console.log(`Fetched ${stars.length} stars from GitHub repository.`)
 
@@ -89,33 +95,36 @@ async function getStarsFromNotionDatabase() {
     return pages.map(page => {
         return {
             pageId: page.id,
-            starId: page.properties["Repository ID"].number,
+            starId: page.properties["ID"].number,
         }
     })
 }
 
 /**
- * Gets issues from a GitHub repository. Pull requests are omitted.
+ * Gets stars from a GitHub user.
  *
  * https://docs.github.com/en/rest/guides/traversing-with-pagination
- * https://docs.github.com/en/rest/reference/issues
+ * https://docs.github.com/en/rest/reference/activity#list-stargazers
  *
- * @returns {Promise<Array<{ number: number, title: string, state: "open" | "closed", comment_count: number, url: string }>>}
+ * @returns {Promise<Array<{ id: number, title: string, labels: array, url: string, starred: number, stargazers: number, forks: number, language: string, description: string, watchers: number, created: string, homepage: string, size: number, pushed: string }>>}
  */
 
 async function getGitHubStarsForUser() {
     const stars = []
-    const iterator = octokit.paginate.iterator(octokit.rest.activity.listReposStarredByAuthenticatedUser, {
-        headers: {
-            accept: 'application/vnd.github.v3.star+json'
-        },
-        per_page: 100
-    })
+
+    const iterator = await octokit.paginate.iterator(
+        octokit.rest.activity.listReposStarredByUser, {
+            headers: {
+                accept: "application/vnd.github.v3.star+json",
+            },
+            username: process.env.GH_STARS_USER,
+            per_page: 100,
+        }
+    )
 
     for await (const { data }
         of iterator) {
         for (const star of data) {
-
             stars.push({
                 id: star.repo.id,
                 title: star.repo.full_name,
@@ -130,21 +139,20 @@ async function getGitHubStarsForUser() {
                 watchers: star.repo.watchers_count,
                 created: star.repo.created_at,
                 homepage: star.repo.homepage,
-                size: star.repo.size
+                size: star.repo.size,
             })
-
         }
     }
     return stars
 }
 
 /**
- * Determines which issues already exist in the Notion database.
+ * Determines which stars already exist in the Notion database.
  *
- * @param {Array<{ number: number, title: string, state: "open" | "closed", comment_count: number, url: string }>} 
+ * @param {Array<{ id: number, title: string, labels: array, url: string, starred: number, stargazers: number, forks: number, language: string, description: string, watchers: number, created: string, homepage: string, size: number, pushed: string }>}
  * @returns {{
- *   pagesToCreate: Array<{ number: number, title: string, state: "open" | "closed", comment_count: number, url: string }>;
- *   pagesToUpdate: Array<{ pageId: string, number: number, title: string, state: "open" | "closed", comment_count: number, url: string }>
+ *   pagesToCreate: Array<{ id: number, title: string, labels: array, url: string, starred: number, stargazers: number, forks: number, language: string, description: string, watchers: number, created: string, homepage: string, size: number, pushed: string }>;
+ *   pagesToUpdate: Array<{ pageId: string, id: number, title: string, labels: array, url: string, starred: number, stargazers: number, forks: number, language: string, description: string, watchers: number, created: string, homepage: string, size: number, pushed: string }>
  * }}
  */
 function getNotionOperations(stars) {
@@ -161,7 +169,10 @@ function getNotionOperations(stars) {
             pagesToCreate.push(star)
         }
     }
-    return { pagesToCreate, pagesToUpdate }
+    return {
+        pagesToCreate,
+        pagesToUpdate,
+    }
 }
 
 /**
@@ -169,7 +180,7 @@ function getNotionOperations(stars) {
  *
  * https://developers.notion.com/reference/post-page
  *
- * @param {Array<{ number: number, title: string, state: "open" | "closed", comment_count: number, url: string }>} pagesToCreate
+ * @param {Array<{ id: number, title: string, labels: array, url: string, starred: number, stargazers: number, forks: number, language: string, description: string, watchers: number, created: string, homepage: string, size: number, pushed: string }>} pagesToCreate
  */
 async function createPages(pagesToCreate) {
     try {
@@ -178,7 +189,9 @@ async function createPages(pagesToCreate) {
             await Promise.all(
                 pagesToCreateBatch.map(star =>
                     notion.pages.create({
-                        parent: { database_id: databaseId },
+                        parent: {
+                            database_id: databaseId,
+                        },
                         properties: getPropertiesFromStar(star),
                     })
                 )
@@ -195,7 +208,7 @@ async function createPages(pagesToCreate) {
  *
  * https://developers.notion.com/reference/patch-page
  *
- * @param {Array<{ pageId: string, number: number, title: string, state: "open" | "closed", comment_count: number, url: string }>} pagesToUpdate
+ * @param {Array<{ pageId: string, id: number, title: string, labels: array, url: string, starred: number, stargazers: number, forks: number, language: string, description: string, watchers: number, created: string, homepage: string, size: number, pushed: string }>} pagesToUpdate
  */
 async function updatePages(pagesToUpdate) {
     try {
@@ -221,71 +234,96 @@ async function updatePages(pagesToUpdate) {
 //*========================================================================
 
 /**
- * Returns the GitHub issue to conform to this database's schema properties.
+ * Returns the GitHub star to conform to this database's schema properties.
  *
- * @param {{ number: number, title: string, state: "open" | "closed", comment_count: number, url: string }} issue
+ * @param {{ id: number, title: string, labels: array, url: string, starred: number, stargazers: number, forks: number, language: string, description: string, watchers: number, created: string, homepage: string, size: number, pushed: string, }} star
  */
 function getPropertiesFromStar(star) {
-    const { id, title, labels, url, starred, stargazers, forks, language, description, watchers, created, homepage, size } = star
+    const {
+        id,
+        title,
+        labels,
+        url,
+        starred,
+        stargazers,
+        forks,
+        language,
+        description,
+        watchers,
+        created,
+        homepage,
+        size,
+        pushed,
+    } = star
 
     const item = {
-        "Repository ID": {
-            number: id
+        ID: {
+            number: id,
         },
         Name: {
-            title: [{ type: "text", text: { content: title } }],
+            title: [{
+                type: "text",
+                text: {
+                    content: title,
+                },
+            }, ],
         },
-        "Repo URL": {
+        URL: {
             url,
         },
-        "Starred": {
-            date: { start: starred }
+        Starred: {
+            date: {
+                start: starred,
+            },
         },
-        "Created": {
-            date: { start: created }
+        Created: {
+            date: {
+                start: created,
+            },
         },
-        "Stargazers": {
-            number: stargazers
+        Stargazers: {
+            number: stargazers,
         },
-        "Watchers": {
-            number: watchers
+        Watchers: {
+            number: watchers,
         },
-        "Size": {
-            number: size
+        "Size (Kb)": {
+            number: size,
         },
-        "Forks": {
-            number: forks
-        }
-    }
-    if (homepage) {
-        item["Homepage"] = {
-            url
-        }
-    }
-    if (language) {
-        item["Language"] = {
-            select: { name: language },
-        }
+        Forks: {
+            number: forks,
+        },
+        Pushed: {
+            date: {
+                start: pushed,
+            },
+        },
+        Homepage: homepage ? {
+            url: homepage,
+        } : null,
+        Description: description ? {
+            rich_text: [{
+                type: "text",
+                text: {
+                    content: description,
+                },
+            }, ],
+        } : null,
+        Language: {
+            select: {
+                name: language,
+            },
+        },
+        Topics: labels ? {
+            multi_select: labels.map(topic => {
+                return {
+                    name: topic,
+                }
+            }),
+        } : null,
     }
 
-    if (description) {
-        item["Description"] = {
-            rich_text: [{ type: "text", text: { content: description } }]
-        }
-    }
-
-    if (Object.keys(labels).length > 0) {
-
-        const label = labels.map(topic => {
-            return {
-                name: topic
-            }
-        })
-        item["Topics"] = {
-            multi_select: label,
-        }
-    }
+    Object.fromEntries(Object.entries(item).filter(([_, v]) => v != null))
 
     return item
-
 }
