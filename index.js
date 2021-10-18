@@ -11,8 +11,18 @@ const { Client, LogLevel } = require("@notionhq/client")
 const dotenv = require("dotenv")
 const { Octokit } = require("octokit")
 const _ = require("lodash")
-
 dotenv.config()
+
+if (!(
+        process.env.GH_STARS_USER &&
+        process.env.GH_USER_TOKEN &&
+        process.env.NOTION_KEY &&
+        process.env.NOTION_DATABASE_ID
+    )) {
+    console.error("Missing environment variable.")
+    process.exit(1)
+}
+
 const octokit = new Octokit({
     auth: process.env.GH_USER_TOKEN,
     request: {},
@@ -23,7 +33,7 @@ const notion = new Client({
 })
 
 const databaseId = process.env.NOTION_DATABASE_ID
-const OPERATION_BATCH_SIZE = 1
+const OPERATION_BATCH_SIZE = 10
 
 /**
  * Local map to store  GitHub star ID to its Notion pageId.
@@ -53,7 +63,7 @@ async function syncNotionDatabaseWithGitHub() {
     // Get all user's currently starred repositories
     console.log("\nFetching stars from Notion DB...")
     const stars = await getGitHubStarsForUser()
-    console.log(`Fetched ${stars.length} stars from GitHub repository.`)
+    console.log(`Fetched ${stars.length} stars from GitHub user.`)
 
     // Group stars into those that need to be created or updated in the Notion database.
     const { pagesToCreate, pagesToUpdate } = getNotionOperations(stars)
@@ -95,7 +105,7 @@ async function getStarsFromNotionDatabase() {
     return pages.map(page => {
         return {
             pageId: page.id,
-            starId: page.properties["ID"].number,
+            starId: page.properties["Star ID"].number,
         }
     })
 }
@@ -112,7 +122,7 @@ async function getStarsFromNotionDatabase() {
 async function getGitHubStarsForUser() {
     const stars = []
 
-    const iterator = await octokit.paginate.iterator(
+    const iterator = octokit.paginate.iterator(
         octokit.rest.activity.listReposStarredByUser, {
             headers: {
                 accept: "application/vnd.github.v3.star+json",
@@ -183,23 +193,20 @@ function getNotionOperations(stars) {
  * @param {Array<{ id: number, title: string, labels: array, url: string, starred: number, stargazers: number, forks: number, language: string, description: string, watchers: number, created: string, homepage: string, size: number, pushed: string }>} pagesToCreate
  */
 async function createPages(pagesToCreate) {
-    try {
-        const pagesToCreateChunks = _.chunk(pagesToCreate, OPERATION_BATCH_SIZE)
-        for (const pagesToCreateBatch of pagesToCreateChunks) {
-            await Promise.all(
-                pagesToCreateBatch.map(star =>
-                    notion.pages.create({
-                        parent: {
-                            database_id: databaseId,
-                        },
-                        properties: getPropertiesFromStar(star),
-                    })
-                )
+    const pagesToCreateChunks = _.chunk(pagesToCreate, OPERATION_BATCH_SIZE)
+    for (const pagesToCreateBatch of pagesToCreateChunks) {
+        console.log(pagesToCreateBatch)
+        await Promise.all(
+            pagesToCreateBatch.map(star =>
+                notion.pages.create({
+                    parent: {
+                        database_id: databaseId,
+                    },
+                    properties: getPropertiesFromStar(star),
+                })
             )
-            console.log(`Completed batch size: ${pagesToCreateBatch.length}`)
-        }
-    } catch (error) {
-        console.error(error)
+        )
+        console.log(`Completed batch size: ${pagesToCreateBatch.length}`)
     }
 }
 
@@ -211,21 +218,17 @@ async function createPages(pagesToCreate) {
  * @param {Array<{ pageId: string, id: number, title: string, labels: array, url: string, starred: number, stargazers: number, forks: number, language: string, description: string, watchers: number, created: string, homepage: string, size: number, pushed: string }>} pagesToUpdate
  */
 async function updatePages(pagesToUpdate) {
-    try {
-        const pagesToUpdateChunks = _.chunk(pagesToUpdate, OPERATION_BATCH_SIZE)
-        for (const pagesToUpdateBatch of pagesToUpdateChunks) {
-            await Promise.all(
-                pagesToUpdateBatch.map(({ pageId, ...star }) =>
-                    notion.pages.update({
-                        page_id: pageId,
-                        properties: getPropertiesFromStar(star),
-                    })
-                )
+    const pagesToUpdateChunks = _.chunk(pagesToUpdate, OPERATION_BATCH_SIZE)
+    for (const pagesToUpdateBatch of pagesToUpdateChunks) {
+        await Promise.all(
+            pagesToUpdateBatch.map(({ pageId, ...star }) =>
+                notion.pages.update({
+                    page_id: pageId,
+                    properties: getPropertiesFromStar(star),
+                })
             )
-            console.log(`Completed batch size: ${pagesToUpdateBatch.length}`)
-        }
-    } catch (error) {
-        console.error(error)
+        )
+        console.log(`Completed batch size: ${pagesToUpdateBatch.length}`)
     }
 }
 
@@ -257,73 +260,68 @@ function getPropertiesFromStar(star) {
     } = star
 
     const item = {
-        ID: {
+        "Name": {
+            title: [{ type: "text", text: { content: title } }],
+        },
+        "Star ID": {
             number: id,
         },
-        Name: {
-            title: [{
-                type: "text",
-                text: {
-                    content: title,
-                },
-            }, ],
-        },
-        URL: {
+        "URL": {
             url,
         },
-        Starred: {
+        "Starred": {
             date: {
                 start: starred,
             },
         },
-        Created: {
+        "Created": {
             date: {
                 start: created,
             },
         },
-        Stargazers: {
+        "Stargazers": {
             number: stargazers,
         },
-        Watchers: {
+        "Watchers": {
             number: watchers,
         },
         "Size (Kb)": {
             number: size,
         },
-        Forks: {
+        "Forks": {
             number: forks,
         },
-        Pushed: {
+        "Pushed": {
             date: {
                 start: pushed,
             },
         },
-        Homepage: homepage ? {
+        "Homepage": ((homepage && homepage !== '') ? {
             url: homepage,
-        } : null,
-        Description: description ? {
+        } : null),
+        "Description": (description ? {
             rich_text: [{
                 type: "text",
                 text: {
                     content: description,
                 },
             }, ],
-        } : null,
-        Language: {
+        } : null),
+        "Language": (language ? {
             select: {
                 name: language,
             },
-        },
-        Topics: labels ? {
+        } : null),
+        "Topics": (labels ? {
             multi_select: labels.map(topic => {
                 return {
                     name: topic,
                 }
             }),
-        } : null,
+        } : null),
     }
 
-    Object.fromEntries(Object.entries(item).filter(([_, v]) => v != null))
+    return Object.fromEntries(Object.entries(item).filter(([_, v]) => v != null))
 
-    return item
+
 }
