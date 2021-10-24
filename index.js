@@ -33,7 +33,7 @@ const notion = new Client({
 })
 
 const databaseId = process.env.NOTION_DATABASE_ID
-const OPERATION_BATCH_SIZE = 1
+const OPERATION_BATCH_SIZE = 10
 
 /**
  * Local map to store  GitHub star ID to its Notion pageId.
@@ -91,7 +91,7 @@ async function getStarsFromNotionDatabase() {
     let cursor = undefined
     while (true) {
         const { results, next_cursor } = await notion.databases.query({
-            page_size: 25,
+            page_size: 10,
             database_id: databaseId,
             start_cursor: cursor,
         })
