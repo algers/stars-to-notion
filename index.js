@@ -34,7 +34,7 @@ const notion = new Client({
 })
 
 const databaseId = process.env.NOTION_DATABASE_ID
-const OPERATION_BATCH_SIZE = 3
+const OPERATION_BATCH_SIZE = 1
 
 /**
  * Local map to store  GitHub star ID to its Notion pageId.
