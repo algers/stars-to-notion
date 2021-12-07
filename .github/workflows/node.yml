@@ -10,6 +10,7 @@ on:
       - main
   schedule:
     - cron: "0 4 * * *"
+  workflow_dispatch:
 
 jobs:
   add-all-stars-to-notion:
