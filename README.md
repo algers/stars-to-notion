@@ -14,7 +14,7 @@ Fork a repository by following the guide [here](https://docs.github.com/en/get-s
 
 You can create your Notion API key [here](https://www.notion.com/my-integrations).
 
-To create a Notion database that will work without modifying `index.js`, duplicate [this empty database template](https://heavenly-straw-aa6.notion.site/fd83c7e92f124740a09311d15798fb1a?v=65e930fbb92842e09a265537d1369922).
+To create a Notion database that will work without modifying `index.js`, duplicate [this empty database template](https://www.notion.so/seanalger/fd83c7e92f124740a09311d15798fb1a?v=65e930fbb92842e09a265537d1369922).
 
 You can follow the steps to create and provide access to an integration in the official documentation [here](https://developers.notion.com/docs)
 
