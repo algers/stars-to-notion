@@ -2,7 +2,7 @@
 
 Add a users starred repositories to a Notion database using GitHub Actions.
 
-[Example](https://heavenly-straw-aa6.notion.site/0dc0dd4d8c424a88ae6ed445380cd257?v=e514ae4f42ed45d48167c92863a77b57)
+[Example](https://seanalger.notion.site/0dc0dd4d8c424a88ae6ed445380cd257?v=e514ae4f42ed45d48167c92863a77b57)
 
 ## Usage
 
